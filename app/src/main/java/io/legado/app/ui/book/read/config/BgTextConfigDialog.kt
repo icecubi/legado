@@ -9,10 +9,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.util.DisplayMetrics
-import android.view.Gravity
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
+import android.view.*
 import androidx.documentfile.provider.DocumentFile
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -24,35 +21,53 @@ import io.legado.app.base.adapter.SimpleRecyclerAdapter
 import io.legado.app.constant.EventBus
 import io.legado.app.help.ImageLoader
 import io.legado.app.help.ReadBookConfig
+import io.legado.app.help.http.HttpHelper
 import io.legado.app.help.permission.Permissions
 import io.legado.app.help.permission.PermissionsCompat
-import io.legado.app.ui.book.read.Help
+import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.customView
+import io.legado.app.lib.dialogs.noButton
+import io.legado.app.lib.dialogs.okButton
+import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.getSecondaryTextColor
+import io.legado.app.ui.book.read.ReadBookActivity
+import io.legado.app.ui.filechooser.FileChooserDialog
+import io.legado.app.ui.filechooser.FilePicker
+import io.legado.app.ui.widget.text.AutoCompleteTextView
 import io.legado.app.utils.*
+import kotlinx.android.synthetic.main.dialog_edit_text.view.*
 import kotlinx.android.synthetic.main.dialog_read_bg_text.*
 import kotlinx.android.synthetic.main.item_bg_image.view.*
 import org.jetbrains.anko.sdk27.listeners.onCheckedChange
 import org.jetbrains.anko.sdk27.listeners.onClick
+import java.io.File
 
-class BgTextConfigDialog : BaseDialogFragment() {
+class BgTextConfigDialog : BaseDialogFragment(), FileChooserDialog.CallBack {
 
     companion object {
         const val TEXT_COLOR = 121
         const val BG_COLOR = 122
     }
 
-    private val resultSelectBg = 123
+    private val requestCodeBg = 123
+    private val requestCodeExport = 131
+    private val requestCodeImport = 132
+    private val configFileName = "readConfig.zip"
     private lateinit var adapter: BgAdapter
+    var primaryTextColor = 0
+    var secondaryTextColor = 0
 
     override fun onStart() {
         super.onStart()
         val dm = DisplayMetrics()
         activity?.let {
-            Help.upSystemUiVisibility(it)
             it.windowManager?.defaultDisplay?.getMetrics(dm)
         }
         dialog?.window?.let {
+            it.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             it.setBackgroundDrawableResource(R.color.background)
-            it.decorView.setPadding(0, 5, 0, 0)
+            it.decorView.setPadding(0, 0, 0, 0)
             val attr = it.attributes
             attr.dimAmount = 0.0f
             attr.gravity = Gravity.BOTTOM
@@ -70,13 +85,24 @@ class BgTextConfigDialog : BaseDialogFragment() {
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        initData()
         initView()
+        initData()
+        initEvent()
     }
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
         ReadBookConfig.save()
+    }
+
+    private fun initView() {
+        val bg = requireContext().bottomBackground
+        val isLight = ColorUtils.isColorLight(bg)
+        primaryTextColor = requireContext().getPrimaryTextColor(isLight)
+        secondaryTextColor = requireContext().getSecondaryTextColor(isLight)
+        root_view.setBackgroundColor(bg)
+        sw_dark_status_icon.setTextColor(primaryTextColor)
+        tv_bg_image.setTextColor(primaryTextColor)
     }
 
     @SuppressLint("InflateParams")
@@ -89,22 +115,21 @@ class BgTextConfigDialog : BaseDialogFragment() {
         val headerView = LayoutInflater.from(requireContext())
             .inflate(R.layout.item_bg_image, recycler_view, false)
         adapter.addHeaderView(headerView)
+        headerView.tv_name.setTextColor(secondaryTextColor)
         headerView.tv_name.text = getString(R.string.select_image)
         headerView.iv_bg.setImageResource(R.drawable.ic_image)
-        headerView.iv_bg.setColorFilter(getCompatColor(R.color.tv_text_default))
+        headerView.iv_bg.setColorFilter(primaryTextColor)
         headerView.onClick { selectImage() }
         requireContext().assets.list("bg/")?.let {
             adapter.setItems(it.toList())
         }
     }
 
-    private fun initView() = with(ReadBookConfig.durConfig) {
+    private fun initEvent() = with(ReadBookConfig.durConfig) {
         sw_dark_status_icon.onCheckedChange { buttonView, isChecked ->
             if (buttonView?.isPressed == true) {
                 setStatusIconDark(isChecked)
-                activity?.let {
-                    Help.upSystemUiVisibility(it)
-                }
+                (activity as? ReadBookActivity)?.upSystemUiVisibility()
             }
         }
         tv_text_color.onClick {
@@ -130,16 +155,33 @@ class BgTextConfigDialog : BaseDialogFragment() {
             ReadBookConfig.resetDur()
             postEvent(EventBus.UP_CONFIG, false)
         }
+        tv_import.onClick {
+            val importFormNet = "网络导入"
+            val otherActions = arrayListOf(importFormNet)
+            FilePicker.selectFile(
+                this@BgTextConfigDialog,
+                requestCodeImport,
+                allowExtensions = arrayOf("zip"),
+                otherActions = otherActions
+            ) { action ->
+                when (action) {
+                    importFormNet -> importNetConfigAlert()
+                }
+            }
+        }
+        tv_export.onClick {
+            FilePicker.selectFolder(this@BgTextConfigDialog, requestCodeExport)
+        }
     }
 
     private fun selectImage() {
         val intent = Intent(Intent.ACTION_GET_CONTENT)
         intent.addCategory(Intent.CATEGORY_OPENABLE)
         intent.type = "image/*"
-        startActivityForResult(intent, resultSelectBg)
+        startActivityForResult(intent, requestCodeBg)
     }
 
-    class BgAdapter(context: Context) :
+    inner class BgAdapter(context: Context) :
         SimpleRecyclerAdapter<String>(context, R.layout.item_bg_image) {
 
         override fun convert(holder: ItemViewHolder, item: String, payloads: MutableList<Any>) {
@@ -147,6 +189,7 @@ class BgTextConfigDialog : BaseDialogFragment() {
                 ImageLoader.load(context, context.assets.open("bg/$item").readBytes())
                     .centerCrop()
                     .into(iv_bg)
+                tv_name.setTextColor(secondaryTextColor)
                 tv_name.text = item.substringBeforeLast(".")
             }
         }
@@ -164,14 +207,158 @@ class BgTextConfigDialog : BaseDialogFragment() {
         }
     }
 
+    @Suppress("BlockingMethodInNonBlockingContext")
+    private fun exportConfig(uri: Uri) {
+        execute {
+            val exportFiles = arrayListOf<File>()
+            val configDirPath = FileUtils.getPath(requireContext().eCacheDir, "readConfig")
+            FileUtils.deleteFile(configDirPath)
+            val configDir = FileUtils.createFolderIfNotExist(configDirPath)
+            val configExportPath = FileUtils.getPath(configDir, "readConfig.json")
+            FileUtils.deleteFile(configExportPath)
+            val configExportFile = FileUtils.createFileIfNotExist(configExportPath)
+            configExportFile.writeText(GSON.toJson(ReadBookConfig.getExportConfig()))
+            exportFiles.add(configExportFile)
+            val fontPath = ReadBookConfig.textFont
+            if (fontPath.isNotEmpty()) {
+                val fontName = FileUtils.getName(fontPath)
+                val fontBytes = fontPath.parseToUri().readBytes(requireContext())
+                fontBytes?.let {
+                    val fontExportFile = FileUtils.createFileIfNotExist(configDir, fontName)
+                    fontExportFile.writeBytes(it)
+                    exportFiles.add(fontExportFile)
+                }
+            }
+            if (ReadBookConfig.durConfig.bgType() == 2) {
+                val bgName = FileUtils.getName(ReadBookConfig.durConfig.bgStr())
+                val bgFile = File(ReadBookConfig.durConfig.bgStr())
+                if (bgFile.exists()) {
+                    val bgExportFile = File(FileUtils.getPath(configDir, bgName))
+                    bgFile.copyTo(bgExportFile)
+                    exportFiles.add(bgExportFile)
+                }
+            }
+            val configZipPath = FileUtils.getPath(requireContext().eCacheDir, configFileName)
+            if (ZipUtils.zipFiles(exportFiles, File(configZipPath))) {
+                if (uri.isContentPath()) {
+                    DocumentFile.fromTreeUri(requireContext(), uri)?.let { treeDoc ->
+                        treeDoc.findFile(configFileName)?.delete()
+                        treeDoc.createFile("", configFileName)
+                            ?.writeBytes(requireContext(), File(configZipPath).readBytes())
+                    }
+                } else {
+                    val exportPath = FileUtils.getPath(File(uri.path!!), configFileName)
+                    FileUtils.deleteFile(exportPath)
+                    FileUtils.createFileIfNotExist(exportPath)
+                        .writeBytes(File(configZipPath).readBytes())
+                }
+            }
+        }.onSuccess {
+            toast("导出成功, 文件名为 $configFileName")
+        }.onError {
+            it.printStackTrace()
+            longToast("导出失败:${it.localizedMessage}")
+        }
+    }
+
+    @SuppressLint("InflateParams")
+    private fun importNetConfigAlert() {
+        alert("输入地址") {
+            var editText: AutoCompleteTextView? = null
+            customView {
+                layoutInflater.inflate(R.layout.dialog_edit_text, null).apply {
+                    editText = edit_view
+                }
+            }
+            okButton {
+                editText?.text?.toString()?.let { url ->
+                    importNetConfig(url)
+                }
+            }
+            noButton { }
+        }.show().applyTint()
+    }
+
+    private fun importNetConfig(url: String) {
+        execute {
+            HttpHelper.simpleGetBytesAsync(url)?.let {
+                importConfig(it)
+            } ?: throw Exception("获取失败")
+        }.onError {
+            longToast(it.msg)
+        }
+    }
+
+    @Suppress("BlockingMethodInNonBlockingContext")
+    private fun importConfig(uri: Uri) {
+        execute {
+            importConfig(uri.readBytes(requireContext())!!)
+        }.onError {
+            it.printStackTrace()
+            longToast("导入失败:${it.localizedMessage}")
+        }
+    }
+
+    @Suppress("BlockingMethodInNonBlockingContext")
+    private fun importConfig(byteArray: ByteArray) {
+        execute {
+            val configZipPath = FileUtils.getPath(requireContext().eCacheDir, configFileName)
+            FileUtils.deleteFile(configZipPath)
+            val zipFile = FileUtils.createFileIfNotExist(configZipPath)
+            zipFile.writeBytes(byteArray)
+            val configDirPath = FileUtils.getPath(requireContext().eCacheDir, "readConfig")
+            FileUtils.deleteFile(configDirPath)
+            ZipUtils.unzipFile(zipFile, FileUtils.createFolderIfNotExist(configDirPath))
+            val configDir = FileUtils.createFolderIfNotExist(configDirPath)
+            val configFile = FileUtils.getFile(configDir, "readConfig.json")
+            val config: ReadBookConfig.Config = GSON.fromJsonObject(configFile.readText())!!
+            if (config.textFont.isNotEmpty()) {
+                val fontName = FileUtils.getName(config.textFont)
+                val fontPath =
+                    FileUtils.getPath(requireContext().externalFilesDir, "font", fontName)
+                FileUtils.getFile(configDir, fontName).copyTo(File(fontPath))
+                config.textFont = fontPath
+            }
+            if (config.bgType() == 2) {
+                val bgName = FileUtils.getName(config.bgStr())
+                val bgPath = FileUtils.getPath(requireContext().externalFilesDir, "bg", bgName)
+                if (!FileUtils.exist(bgPath)) {
+                    FileUtils.getFile(configDir, bgName).copyTo(File(bgPath))
+                }
+            }
+            ReadBookConfig.durConfig = config
+            postEvent(EventBus.UP_CONFIG, true)
+        }.onSuccess {
+            toast("导入成功")
+        }.onError {
+            it.printStackTrace()
+            longToast("导入失败:${it.localizedMessage}")
+        }
+    }
+
+    override fun onFilePicked(requestCode: Int, currentPath: String) {
+        when (requestCode) {
+            requestCodeImport -> importConfig(Uri.fromFile(File(currentPath)))
+            requestCodeExport -> exportConfig(Uri.fromFile(File(currentPath)))
+        }
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
-            resultSelectBg -> {
-                if (resultCode == RESULT_OK) {
-                    data?.data?.let { uri ->
-                        setBgFromUri(uri)
-                    }
+            requestCodeBg -> if (resultCode == RESULT_OK) {
+                data?.data?.let { uri ->
+                    setBgFromUri(uri)
+                }
+            }
+            requestCodeImport -> if (resultCode == RESULT_OK) {
+                data?.data?.let { uri ->
+                    importConfig(uri)
+                }
+            }
+            requestCodeExport -> if (resultCode == RESULT_OK) {
+                data?.data?.let { uri ->
+                    exportConfig(uri)
                 }
             }
         }
@@ -181,9 +368,8 @@ class BgTextConfigDialog : BaseDialogFragment() {
         if (uri.toString().isContentPath()) {
             val doc = DocumentFile.fromSingleUri(requireContext(), uri)
             doc?.name?.let {
-                var file = requireContext().getExternalFilesDir(null)
-                    ?: requireContext().filesDir
-                file = FileUtils.createFileIfNotExist(file, it, "bg")
+                val file =
+                    FileUtils.createFileIfNotExist(requireContext().externalFilesDir, "bg", it)
                 kotlin.runCatching {
                     DocumentUtils.readBytes(requireContext(), doc.uri)
                 }.getOrNull()?.let { byteArray ->

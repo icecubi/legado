@@ -117,7 +117,8 @@ class CircleImageView(context: Context, attrs: AttributeSet) :
 
     private var text: String? = null
 
-    private var textColor = context.getCompatColor(R.color.tv_text_default)
+    private var textColor = context.getCompatColor(R.color.primaryText)
+    private var textBold = false
 
     init {
         super.setScaleType(SCALE_TYPE)
@@ -140,7 +141,7 @@ class CircleImageView(context: Context, attrs: AttributeSet) :
         if (a.hasValue(R.styleable.CircleImageView_textColor)) {
             textColor = a.getColor(
                 R.styleable.CircleImageView_textColor,
-                context.getCompatColor(R.color.tv_text_default)
+                context.getCompatColor(R.color.primaryText)
             )
         }
         a.recycle()
@@ -210,6 +211,7 @@ class CircleImageView(context: Context, attrs: AttributeSet) :
     private fun drawText(canvas: Canvas) {
         text?.let {
             textPaint.color = textColor
+            textPaint.isFakeBoldText = textBold
             textPaint.textSize = 15.sp.toFloat()
             val fm = textPaint.fontMetrics
             canvas.drawText(
@@ -223,6 +225,11 @@ class CircleImageView(context: Context, attrs: AttributeSet) :
 
     fun setTextColor(@ColorInt textColor: Int) {
         this.textColor = textColor
+        invalidate()
+    }
+
+    fun setTextBold(bold: Boolean) {
+        this.textBold = bold
         invalidate()
     }
 

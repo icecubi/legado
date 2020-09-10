@@ -30,6 +30,7 @@
             android:text="@string/title"
             android:gravity="center"
             android:textSize="14sp"
+            app:isBottomBackground="true"
             app:radius="3dp" />
 
         <Space
@@ -37,17 +38,17 @@
             android:layout_height="wrap_content"
             android:layout_weight="1" />
 
-        <io.legado.app.ui.widget.text.StrokeTextView
-            android:id="@+id/tv_text_bold"
+        <io.legado.app.ui.book.read.config.TextFontWeightConverter
+            android:id="@+id/text_font_weight_converter"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:paddingLeft="6dp"
             android:paddingRight="6dp"
             android:paddingTop="4dp"
             android:paddingBottom="4dp"
-            android:text="@string/text_bold"
             android:gravity="center"
             android:textSize="14sp"
+            app:isBottomBackground="true"
             app:radius="3dp" />
 
         <Space
@@ -66,6 +67,7 @@
             android:text="@string/text_font"
             android:gravity="center"
             android:textSize="14sp"
+            app:isBottomBackground="true"
             app:radius="3dp" />
 
         <Space
@@ -84,6 +86,7 @@
             android:text="@string/text_indent"
             android:gravity="center"
             android:textSize="14sp"
+            app:isBottomBackground="true"
             app:radius="3dp" />
 
         <Space
@@ -101,6 +104,7 @@
             android:paddingBottom="4dp"
             android:gravity="center"
             android:textSize="14sp"
+            app:isBottomBackground="true"
             app:radius="3dp" />
 
         <Space
@@ -119,6 +123,7 @@
             android:text="@string/padding"
             android:gravity="center"
             android:textSize="14sp"
+            app:isBottomBackground="true"
             app:radius="3dp" />
 
         <Space
@@ -137,6 +142,7 @@
             android:text="@string/information"
             android:gravity="center"
             android:textSize="14sp"
+            app:isBottomBackground="true"
             app:radius="3dp" />
 
         <Space
@@ -153,6 +159,7 @@
         android:layout_marginTop="10dp"
         android:paddingLeft="10dp"
         android:paddingRight="10dp"
+        app:isBottomBackground="true"
         app:max="45"
         app:title="@string/text_size" />
 
@@ -162,6 +169,7 @@
         android:layout_height="wrap_content"
         android:paddingLeft="10dp"
         android:paddingRight="10dp"
+        app:isBottomBackground="true"
         app:max="100"
         app:title="@string/text_letter_spacing" />
 
@@ -171,6 +179,7 @@
         android:layout_height="wrap_content"
         android:paddingLeft="10dp"
         android:paddingRight="10dp"
+        app:isBottomBackground="true"
         app:max="20"
         app:title="@string/line_size" />
 
@@ -180,6 +189,7 @@
         android:layout_height="wrap_content"
         android:paddingLeft="10dp"
         android:paddingRight="10dp"
+        app:isBottomBackground="true"
         app:max="20"
         app:title="@string/paragraph_size" />
 
@@ -218,7 +228,8 @@
             android:button="@null"
             android:gravity="center"
             android:singleLine="true"
-            android:text="@string/page_anim_cover" />
+            android:text="@string/page_anim_cover"
+            app:isBottomBackground="true" />
 
         <io.legado.app.lib.theme.view.ATERadioNoButton
             android:id="@+id/rb_anim1"
@@ -230,7 +241,8 @@
             android:button="@null"
             android:gravity="center"
             android:singleLine="true"
-            android:text="@string/page_anim_slide" />
+            android:text="@string/page_anim_slide"
+            app:isBottomBackground="true" />
 
         <io.legado.app.lib.theme.view.ATERadioNoButton
             android:id="@+id/rb_simulation_anim"
@@ -242,7 +254,8 @@
             android:button="@null"
             android:gravity="center"
             android:singleLine="true"
-            android:text="@string/page_anim_simulation" />
+            android:text="@string/page_anim_simulation"
+            app:isBottomBackground="true" />
 
         <io.legado.app.lib.theme.view.ATERadioNoButton
             android:id="@+id/rb_scroll_anim"
@@ -254,7 +267,8 @@
             android:button="@null"
             android:gravity="center"
             android:singleLine="true"
-            android:text="@string/page_anim_scroll" />
+            android:text="@string/page_anim_scroll"
+            app:isBottomBackground="true" />
 
         <io.legado.app.lib.theme.view.ATERadioNoButton
             android:id="@+id/rb_no_anim"
@@ -266,7 +280,8 @@
             android:button="@null"
             android:gravity="center"
             android:singleLine="true"
-            android:text="@string/page_anim_none" />
+            android:text="@string/page_anim_none"
+            app:isBottomBackground="true" />
 
     </RadioGroup>
 
@@ -324,7 +339,7 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:src="@drawable/image_cover_default"
-            app:civ_border_color="@color/tv_text_default"
+            app:civ_border_color="@color/primaryText"
             app:civ_border_width="1dp"
             app:text="@string/text" />
 
@@ -338,7 +353,7 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:src="@drawable/image_cover_default"
-            app:civ_border_color="@color/tv_text_default"
+            app:civ_border_color="@color/primaryText"
             app:civ_border_width="1dp"
             app:text="@string/text" />
 
@@ -352,7 +367,7 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:src="@drawable/image_cover_default"
-            app:civ_border_color="@color/tv_text_default"
+            app:civ_border_color="@color/primaryText"
             app:civ_border_width="1dp"
             app:text="@string/text" />
 
@@ -366,7 +381,7 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:src="@drawable/image_cover_default"
-            app:civ_border_color="@color/tv_text_default"
+            app:civ_border_color="@color/primaryText"
             app:civ_border_width="1dp"
             app:text="@string/text" />
 
@@ -380,7 +395,7 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:src="@drawable/image_cover_default"
-            app:civ_border_color="@color/tv_text_default"
+            app:civ_border_color="@color/primaryText"
             app:civ_border_width="1dp"
             app:text="@string/text" />
 

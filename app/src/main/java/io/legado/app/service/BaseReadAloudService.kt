@@ -145,6 +145,9 @@ abstract class BaseReadAloudService : BaseService(),
     open fun resumeReadAloud() {
         pause = false
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
+        if (timeMinute > 1) {
+            doDs()
+        }
     }
 
     abstract fun upSpeechRate(reset: Boolean = false)
@@ -163,12 +166,12 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private fun addTimer() {
-        if (timeMinute == 60) {
+        if (timeMinute == 180) {
             timeMinute = 0
             handler.removeCallbacks(dsRunnable)
         } else {
             timeMinute += 10
-            if (timeMinute > 60) timeMinute = 60
+            if (timeMinute > 180) timeMinute = 180
             handler.removeCallbacks(dsRunnable)
             handler.postDelayed(dsRunnable, 60000)
         }
@@ -279,7 +282,7 @@ abstract class BaseReadAloudService : BaseService(),
     private fun upNotification() {
         var nTitle: String = when {
             pause -> getString(R.string.read_aloud_pause)
-            timeMinute in 1..60 -> getString(
+            timeMinute in 1..180 -> getString(
                 R.string.read_aloud_timer,
                 timeMinute
             )
@@ -323,7 +326,6 @@ abstract class BaseReadAloudService : BaseService(),
         )
         builder.setStyle(
             androidx.media.app.NotificationCompat.MediaStyle()
-                .setMediaSession(mediaSessionCompat.sessionToken)
                 .setShowActionsInCompactView(0, 1, 2)
         )
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -334,6 +336,7 @@ abstract class BaseReadAloudService : BaseService(),
     abstract fun aloudServicePendingIntent(actionStr: String): PendingIntent?
 
     open fun nextChapter() {
+        ReadBook.upReadStartTime()
         if (!ReadBook.moveToNextChapter(true)) {
             stopSelf()
         }

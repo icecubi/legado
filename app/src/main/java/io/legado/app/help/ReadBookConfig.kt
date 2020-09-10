@@ -4,13 +4,15 @@ import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
+import android.os.Parcelable
 import androidx.annotation.Keep
 import io.legado.app.App
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.ui.book.read.page.ChapterProvider
+import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.utils.*
+import kotlinx.android.parcel.Parcelize
 import java.io.File
 
 /**
@@ -18,17 +20,26 @@ import java.io.File
  */
 @Keep
 object ReadBookConfig {
-    const val readConfigFileName = "readConfig.json"
-    private val configFilePath =
-        App.INSTANCE.filesDir.absolutePath + File.separator + readConfigFileName
+    const val configFileName = "readConfig.json"
+    val configFilePath = FileUtils.getPath(App.INSTANCE.filesDir, configFileName)
     val configList: ArrayList<Config> = arrayListOf()
     private val defaultConfigs by lazy {
-        val json = String(App.INSTANCE.assets.open(readConfigFileName).readBytes())
+        val json = String(App.INSTANCE.assets.open(configFileName).readBytes())
         GSON.fromJsonArray<Config>(json)!!
     }
-    val durConfig get() = getConfig(styleSelect)
+    var durConfig
+        get() = getConfig(styleSelect)
+        set(value) {
+            configList[styleSelect] = value
+            if (shareLayout) {
+                configList[5] = value
+            }
+            upBg()
+        }
+
     var bg: Drawable? = null
     var bgMeanColor: Int = 0
+    val textColor: Int get() = durConfig.textColor()
 
     init {
         upConfig()
@@ -59,6 +70,7 @@ object ReadBookConfig {
                 val json = configFile.readText()
                 return GSON.fromJsonArray(json)
             } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
         return null
@@ -76,12 +88,16 @@ object ReadBookConfig {
                 bgMeanColor = color
             }
         }
+        isScroll = pageAnim == 3
     }
 
     fun save() {
         Coroutine.async {
-            val json = GSON.toJson(configList)
-            FileUtils.createFileIfNotExist(configFilePath).writeText(json)
+            synchronized(this) {
+                val json = GSON.toJson(configList)
+                FileUtils.deleteFile(configFilePath)
+                FileUtils.createFileIfNotExist(configFilePath).writeText(json)
+            }
         }
     }
 
@@ -103,6 +119,11 @@ object ReadBookConfig {
     }
 
     //配置写入读取
+    var autoReadSpeed = App.INSTANCE.getPrefInt(PreferKey.autoReadSpeed, 46)
+        set(value) {
+            field = value
+            App.INSTANCE.putPrefInt(PreferKey.autoReadSpeed, value)
+        }
     var styleSelect = App.INSTANCE.getPrefInt(PreferKey.readStyleSelect)
         set(value) {
             field = value
@@ -117,16 +138,16 @@ object ReadBookConfig {
                 App.INSTANCE.putPrefBoolean(PreferKey.shareLayout, value)
             }
         }
-    var pageAnim = App.INSTANCE.getPrefInt(PreferKey.pageAnim)
+    var pageAnim: Int
+        get() = if (AppConfig.isEInkMode) -1 else App.INSTANCE.getPrefInt(PreferKey.pageAnim)
         set(value) {
-            field = value
-            isScroll = value == 3
-            if (App.INSTANCE.getPrefInt(PreferKey.pageAnim) != value) {
-                App.INSTANCE.putPrefInt(PreferKey.pageAnim, value)
-            }
+            App.INSTANCE.putPrefInt(PreferKey.pageAnim, value)
+            isScroll = pageAnim == 3
         }
     var isScroll = pageAnim == 3
     val clickTurnPage get() = App.INSTANCE.getPrefBoolean(PreferKey.clickTurnPage, true)
+    val textFullJustify get() = App.INSTANCE.getPrefBoolean(PreferKey.textFullJustify, true)
+    val textBottomJustify get() = App.INSTANCE.getPrefBoolean(PreferKey.textBottomJustify, true)
     var bodyIndentCount = App.INSTANCE.getPrefInt(PreferKey.bodyIndent, 2)
         set(value) {
             field = value
@@ -139,9 +160,15 @@ object ReadBookConfig {
     var hideStatusBar = App.INSTANCE.getPrefBoolean(PreferKey.hideStatusBar)
     var hideNavigationBar = App.INSTANCE.getPrefBoolean(PreferKey.hideNavigationBar)
 
-    private val config get() = if (shareLayout) getConfig(5) else durConfig
+    val config get() = if (shareLayout) getConfig(5) else durConfig
 
-    var textBold: Boolean
+    var textFont: String
+        get() = config.textFont
+        set(value) {
+            config.textFont = value
+        }
+
+    var textBold: Int
         get() = config.textBold
         set(value) {
             config.textBold = value
@@ -278,21 +305,67 @@ object ReadBookConfig {
             config.showFooterLine = value
         }
 
+    fun getExportConfig(): Config {
+        val exportConfig = GSON.fromJsonObject<Config>(GSON.toJson(durConfig))!!
+        if (shareLayout) {
+            val shearConfig = getConfig(5)
+            exportConfig.textFont = shearConfig.textFont
+            exportConfig.textBold = shearConfig.textBold
+            exportConfig.textSize = shearConfig.textSize
+            exportConfig.letterSpacing = shearConfig.letterSpacing
+            exportConfig.lineSpacingExtra = shearConfig.lineSpacingExtra
+            exportConfig.paragraphSpacing = shearConfig.paragraphSpacing
+            exportConfig.titleMode = shearConfig.titleMode
+            exportConfig.titleSize = shearConfig.titleSize
+            exportConfig.titleTopSpacing = shearConfig.titleTopSpacing
+            exportConfig.titleBottomSpacing = shearConfig.titleBottomSpacing
+            exportConfig.paddingBottom = shearConfig.paddingBottom
+            exportConfig.paddingLeft = shearConfig.paddingLeft
+            exportConfig.paddingRight = shearConfig.paddingRight
+            exportConfig.paddingTop = shearConfig.paddingTop
+            exportConfig.headerPaddingBottom = shearConfig.headerPaddingBottom
+            exportConfig.headerPaddingLeft = shearConfig.headerPaddingLeft
+            exportConfig.headerPaddingRight = shearConfig.headerPaddingRight
+            exportConfig.headerPaddingTop = shearConfig.headerPaddingTop
+            exportConfig.footerPaddingBottom = shearConfig.footerPaddingBottom
+            exportConfig.footerPaddingLeft = shearConfig.footerPaddingLeft
+            exportConfig.footerPaddingRight = shearConfig.footerPaddingRight
+            exportConfig.footerPaddingTop = shearConfig.footerPaddingTop
+            exportConfig.showHeaderLine = shearConfig.showHeaderLine
+            exportConfig.showFooterLine = shearConfig.showFooterLine
+            exportConfig.tipHeaderLeft = shearConfig.tipHeaderLeft
+            exportConfig.tipHeaderMiddle = shearConfig.tipHeaderMiddle
+            exportConfig.tipHeaderRight = shearConfig.tipHeaderRight
+            exportConfig.tipFooterLeft = shearConfig.tipFooterLeft
+            exportConfig.tipFooterMiddle = shearConfig.tipFooterMiddle
+            exportConfig.tipFooterRight = shearConfig.tipFooterRight
+            exportConfig.hideHeader = shearConfig.hideHeader
+            exportConfig.hideFooter = shearConfig.hideFooter
+        }
+        return exportConfig
+    }
+
     @Keep
+    @Parcelize
     class Config(
         private var bgStr: String = "#EEEEEE",//白天背景
         private var bgStrNight: String = "#000000",//夜间背景
+        private var bgStrEInk: String = "#FFFFFF",
         private var bgType: Int = 0,//白天背景类型 0:颜色, 1:assets图片, 2其它图片
         private var bgTypeNight: Int = 0,//夜间背景类型
+        private var bgTypeEInk: Int = 0,
         private var darkStatusIcon: Boolean = true,//白天是否暗色状态栏
         private var darkStatusIconNight: Boolean = false,//晚上是否暗色状态栏
+        private var darkStatusIconEInk: Boolean = true,
         private var textColor: String = "#3E3D3B",//白天文字颜色
         private var textColorNight: String = "#ADADAD",//夜间文字颜色
-        var textBold: Boolean = false,//是否粗体字
+        private var textColorEInk: String = "#000000",
+        var textFont: String = "",//字体
+        var textBold: Int = 0,//是否粗体字 0:正常, 1:粗体, 2:细体
         var textSize: Int = 20,//文字大小
-        var letterSpacing: Float = 0.5f,//字间距
+        var letterSpacing: Float = 0.1f,//字间距
         var lineSpacingExtra: Int = 12,//行间距
-        var paragraphSpacing: Int = 12,//段距
+        var paragraphSpacing: Int = 4,//段距
         var titleMode: Int = 0,//标题居中
         var titleSize: Int = 0,
         var titleTopSpacing: Int = 0,
@@ -310,56 +383,80 @@ object ReadBookConfig {
         var footerPaddingRight: Int = 16,
         var footerPaddingTop: Int = 6,
         var showHeaderLine: Boolean = false,
-        var showFooterLine: Boolean = true
-    ) {
+        var showFooterLine: Boolean = true,
+        var tipHeaderLeft: Int = ReadTipConfig.time,
+        var tipHeaderMiddle: Int = ReadTipConfig.none,
+        var tipHeaderRight: Int = ReadTipConfig.battery,
+        var tipFooterLeft: Int = ReadTipConfig.chapterTitle,
+        var tipFooterMiddle: Int = ReadTipConfig.none,
+        var tipFooterRight: Int = ReadTipConfig.pageAndTotal,
+        var hideHeader: Boolean = true,
+        var hideFooter: Boolean = false
+    ) : Parcelable {
         fun setBg(bgType: Int, bg: String) {
-            if (AppConfig.isNightTheme) {
-                bgTypeNight = bgType
-                bgStrNight = bg
-            } else {
-                this.bgType = bgType
-                bgStr = bg
+            when {
+                AppConfig.isEInkMode -> {
+                    bgTypeEInk = bgType
+                    bgStrEInk = bg
+                }
+                AppConfig.isNightTheme -> {
+                    bgTypeNight = bgType
+                    bgStrNight = bg
+                }
+                else -> {
+                    this.bgType = bgType
+                    bgStr = bg
+                }
             }
         }
 
         fun setTextColor(color: Int) {
-            if (AppConfig.isNightTheme) {
-                textColorNight = "#${color.hexString}"
-            } else {
-                textColor = "#${color.hexString}"
+            when {
+                AppConfig.isEInkMode -> textColorEInk = "#${color.hexString}"
+                AppConfig.isNightTheme -> textColorNight = "#${color.hexString}"
+                else -> textColor = "#${color.hexString}"
             }
             ChapterProvider.upStyle()
         }
 
         fun setStatusIconDark(isDark: Boolean) {
-            if (AppConfig.isNightTheme) {
-                darkStatusIconNight = isDark
-            } else {
-                darkStatusIcon = isDark
+            when {
+                AppConfig.isEInkMode -> darkStatusIconEInk = isDark
+                AppConfig.isNightTheme -> darkStatusIconNight = isDark
+                else -> darkStatusIcon = isDark
             }
         }
 
         fun statusIconDark(): Boolean {
-            return if (AppConfig.isNightTheme) {
-                darkStatusIconNight
-            } else {
-                darkStatusIcon
+            return when {
+                AppConfig.isEInkMode -> darkStatusIconEInk
+                AppConfig.isNightTheme -> darkStatusIconNight
+                else -> darkStatusIcon
             }
         }
 
         fun textColor(): Int {
-            return if (AppConfig.isNightTheme) Color.parseColor(textColorNight)
-            else Color.parseColor(textColor)
+            return when {
+                AppConfig.isEInkMode -> Color.parseColor(textColorEInk)
+                AppConfig.isNightTheme -> Color.parseColor(textColorNight)
+                else -> Color.parseColor(textColor)
+            }
         }
 
         fun bgStr(): String {
-            return if (AppConfig.isNightTheme) bgStrNight
-            else bgStr
+            return when {
+                AppConfig.isEInkMode -> bgStrEInk
+                AppConfig.isNightTheme -> bgStrNight
+                else -> bgStr
+            }
         }
 
         fun bgType(): Int {
-            return if (AppConfig.isNightTheme) bgTypeNight
-            else bgType
+            return when {
+                AppConfig.isEInkMode -> bgTypeEInk
+                AppConfig.isNightTheme -> bgTypeNight
+                else -> bgType
+            }
         }
 
         fun bgDrawable(width: Int, height: Int): Drawable {

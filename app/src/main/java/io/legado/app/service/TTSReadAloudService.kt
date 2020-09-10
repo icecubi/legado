@@ -1,6 +1,7 @@
 package io.legado.app.service
 
 import android.app.PendingIntent
+import android.content.Intent
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import io.legado.app.R
@@ -40,11 +41,15 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
         upSpeechRate()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        clearTTS()
+        stopSelf()
+    }
+
     private fun initTts() {
         ttsInitFinish = false
-        textToSpeech = TextToSpeech(this, this).apply {
-            setOnUtteranceProgressListener(ttsUtteranceListener)
-        }
+        textToSpeech = TextToSpeech(this, this)
     }
 
     override fun onDestroy() {
@@ -55,6 +60,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             textToSpeech?.let {
+                it.setOnUtteranceProgressListener(ttsUtteranceListener)
                 it.language = Locale.CHINA
                 ttsInitFinish = true
                 play()
@@ -69,16 +75,20 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
     @Synchronized
     override fun play() {
         if (contentList.isNotEmpty() && ttsInitFinish && requestFocus()) {
-            MediaHelp.playSilentSound(this)
             super.play()
-            textToSpeech?.stop()
-            for (i in nowSpeak until contentList.size) {
-                textToSpeech?.speak(
-                    contentList[i],
-                    TextToSpeech.QUEUE_ADD,
-                    null,
-                    AppConst.APP_TAG + i
-                )
+            execute {
+                MediaHelp.playSilentSound(this@TTSReadAloudService)
+                textToSpeech?.let {
+                    it.speak("", TextToSpeech.QUEUE_FLUSH, null, null)
+                    for (i in nowSpeak until contentList.size) {
+                        it.speak(
+                            contentList[i],
+                            TextToSpeech.QUEUE_ADD,
+                            null,
+                            AppConst.APP_TAG + i
+                        )
+                    }
+                }
             }
         }
     }

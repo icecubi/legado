@@ -15,10 +15,10 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.AppConfig
+import io.legado.app.help.BookHelp
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.theme.ATH
 import io.legado.app.service.BaseReadAloudService
-import io.legado.app.service.help.ReadAloud
 import io.legado.app.ui.main.bookshelf.BookshelfFragment
 import io.legado.app.ui.main.explore.ExploreFragment
 import io.legado.app.ui.main.my.MyFragment
@@ -26,16 +26,19 @@ import io.legado.app.ui.main.rss.RssFragment
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.*
 import kotlinx.android.synthetic.main.activity_main.*
+import org.jetbrains.anko.toast
 
 class MainActivity : VMBaseActivity<MainViewModel>(R.layout.activity_main),
     BottomNavigationView.OnNavigationItemSelectedListener,
+    BottomNavigationView.OnNavigationItemReselectedListener,
     ViewPager.OnPageChangeListener by ViewPager.SimpleOnPageChangeListener() {
     override val viewModel: MainViewModel
         get() = getViewModel(MainViewModel::class.java)
-
+    private var exitTime: Long = 0
+    private var bookshelfReselected: Long = 0
     private var pagePosition = 0
     private val fragmentId = arrayOf(0, 1, 2, 3)
-    private val fragmentMap = mapOf<Int, Fragment>(
+    private val fragmentMap = mapOf(
         Pair(fragmentId[0], BookshelfFragment()),
         Pair(fragmentId[1], ExploreFragment()),
         Pair(fragmentId[2], RssFragment()),
@@ -49,6 +52,7 @@ class MainActivity : VMBaseActivity<MainViewModel>(R.layout.activity_main),
         view_pager_main.adapter = TabFragmentPageAdapter(supportFragmentManager)
         view_pager_main.addOnPageChangeListener(this)
         bottom_navigation_view.setOnNavigationItemSelectedListener(this)
+        bottom_navigation_view.setOnNavigationItemReselectedListener(this)
         bottom_navigation_view.menu.findItem(R.id.menu_rss).isVisible = AppConfig.isShowRSS
     }
 
@@ -58,9 +62,12 @@ class MainActivity : VMBaseActivity<MainViewModel>(R.layout.activity_main),
         //自动更新书籍
         if (AppConfig.autoRefreshBook) {
             view_pager_main.postDelayed({
-                viewModel.upChapterList()
+                viewModel.upAllBookToc()
             }, 1000)
         }
+        view_pager_main.postDelayed({
+            viewModel.postLoad()
+        }, 3000)
     }
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
@@ -73,9 +80,21 @@ class MainActivity : VMBaseActivity<MainViewModel>(R.layout.activity_main),
         return false
     }
 
+    override fun onNavigationItemReselected(item: MenuItem) {
+        when (item.itemId) {
+            R.id.menu_bookshelf -> {
+                if (System.currentTimeMillis() - bookshelfReselected > 300) {
+                    bookshelfReselected = System.currentTimeMillis()
+                } else {
+                    (fragmentMap[0] as? BookshelfFragment)?.gotoTop()
+                }
+            }
+        }
+    }
+
     private fun upVersion() {
-        if (getPrefInt(PreferKey.versionCode) != App.INSTANCE.versionCode) {
-            putPrefInt(PreferKey.versionCode, App.INSTANCE.versionCode)
+        if (getPrefInt(PreferKey.versionCode) != App.versionCode) {
+            putPrefInt(PreferKey.versionCode, App.versionCode)
             if (!BuildConfig.DEBUG) {
                 val log = String(assets.open("updateLog.md").readBytes())
                 TextDialog.show(supportFragmentManager, log, TextDialog.MD, 5000, true)
@@ -104,10 +123,17 @@ class MainActivity : VMBaseActivity<MainViewModel>(R.layout.activity_main),
                         view_pager_main.currentItem = 0
                         return true
                     }
-                    if (!BaseReadAloudService.pause) {
-                        moveTaskToBack(true)
-                        return true
+                    if (System.currentTimeMillis() - exitTime > 2000) {
+                        toast(R.string.double_click_exit)
+                        exitTime = System.currentTimeMillis()
+                    } else {
+                        if (BaseReadAloudService.pause) {
+                            finish()
+                        } else {
+                            moveTaskToBack(true)
+                        }
                     }
+                    return true
                 }
             }
         }
@@ -123,7 +149,7 @@ class MainActivity : VMBaseActivity<MainViewModel>(R.layout.activity_main),
 
     override fun onDestroy() {
         super.onDestroy()
-        ReadAloud.stop(this)
+        BookHelp.clearRemovedCache()
     }
 
     override fun observeLiveBus() {
@@ -137,9 +163,12 @@ class MainActivity : VMBaseActivity<MainViewModel>(R.layout.activity_main),
                 view_pager_main.setCurrentItem(3, false)
             }
         }
+        observeEvent<String>(PreferKey.threadCount) {
+            viewModel.upPool()
+        }
     }
 
-    private inner class TabFragmentPageAdapter internal constructor(fm: FragmentManager) :
+    private inner class TabFragmentPageAdapter(fm: FragmentManager) :
         FragmentStatePagerAdapter(fm, BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT) {
 
         override fun getItemPosition(`object`: Any): Int {

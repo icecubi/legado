@@ -3,7 +3,7 @@ package io.legado.app.ui.rss.article
 import android.os.Bundle
 import android.view.View
 import androidx.lifecycle.LiveData
-import androidx.lifecycle.Observer
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.App
@@ -42,6 +42,8 @@ class RssArticlesFragment : VMBaseFragment<RssArticlesViewModel>(R.layout.fragme
     lateinit var adapter: RssArticlesAdapter
     private lateinit var loadMoreView: LoadMoreView
     private var rssArticlesData: LiveData<List<RssArticle>>? = null
+    override val isGridLayout: Boolean
+        get() = activityViewModel.isGridLayout
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         viewModel.init(arguments)
@@ -53,9 +55,15 @@ class RssArticlesFragment : VMBaseFragment<RssArticlesViewModel>(R.layout.fragme
 
     private fun initView() {
         ATH.applyEdgeEffectColor(recycler_view)
-        recycler_view.layoutManager = LinearLayoutManager(requireContext())
-        recycler_view.addItemDecoration(VerticalDivider(requireContext()))
-        adapter = RssArticlesAdapter(requireContext(), this)
+        recycler_view.layoutManager = if (activityViewModel.isGridLayout) {
+            recycler_view.setPadding(8, 0, 8, 0)
+            GridLayoutManager(requireContext(), 2)
+        } else {
+            recycler_view.addItemDecoration(VerticalDivider(requireContext()))
+            LinearLayoutManager(requireContext())
+
+        }
+        adapter = RssArticlesAdapter(requireContext(), activityViewModel.layoutId, this)
         recycler_view.adapter = adapter
         loadMoreView = LoadMoreView(requireContext())
         adapter.addFooterView(loadMoreView)
@@ -78,7 +86,7 @@ class RssArticlesFragment : VMBaseFragment<RssArticlesViewModel>(R.layout.fragme
         activityViewModel.url?.let {
             rssArticlesData?.removeObservers(this)
             rssArticlesData = App.db.rssArticleDao().liveByOriginSort(it, viewModel.sortName)
-            rssArticlesData?.observe(viewLifecycleOwner, Observer { list ->
+            rssArticlesData?.observe(viewLifecycleOwner, { list ->
                 adapter.setItems(list)
             })
         }
@@ -95,7 +103,7 @@ class RssArticlesFragment : VMBaseFragment<RssArticlesViewModel>(R.layout.fragme
     }
 
     override fun observeLiveBus() {
-        viewModel.loadFinally.observe(viewLifecycleOwner, Observer {
+        viewModel.loadFinally.observe(viewLifecycleOwner, {
             refresh_recycler_view.stopLoading()
             if (it) {
                 loadMoreView.startLoad()
