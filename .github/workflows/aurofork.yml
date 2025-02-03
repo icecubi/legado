@@ -10,7 +10,7 @@ jobs:
   repo-sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: tgymnich/fork-sync@v1.6.3
+      - uses: tgymnich/fork-sync@v2.0.10
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           owner: gedoor # fork 的上游仓库 user
