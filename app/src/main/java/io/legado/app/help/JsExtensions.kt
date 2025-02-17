@@ -21,6 +21,7 @@ import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.QueryTTF
+import io.legado.app.ui.association.OpenUrlConfirmActivity
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.EncoderUtils
@@ -43,6 +44,7 @@ import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.readBytes
 import io.legado.app.utils.readText
 import io.legado.app.utils.stackTraceStr
+import io.legado.app.utils.startActivity
 import io.legado.app.utils.toStringArray
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
@@ -956,6 +958,21 @@ interface JsExtensions : JsEncodeUtils {
 
     fun androidId(): String {
         return AppConst.androidId
+    }
+
+    fun openUrl(url: String) {
+        openUrl(url, null)
+    }
+
+    // 新增 mimeType 参数，默认为 null（保持兼容性）
+    fun openUrl(url: String, mimeType: String? = null) {
+        val source = getSource() ?: throw NoStackTraceException("openUrl source cannot be null")
+        appCtx.startActivity<OpenUrlConfirmActivity> {
+            putExtra("uri", url)
+            putExtra("mimeType", mimeType)
+            putExtra("sourceOrigin", source.getKey())
+            putExtra("sourceName", source.getTag())
+        }
     }
 
 }
