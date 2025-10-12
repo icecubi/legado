@@ -17,8 +17,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
@@ -39,6 +41,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     private var bookSourceParts = emptyList<BookSourcePart>()
     private var searchBooks = arrayListOf<SearchBook>()
     private var searchJob: Job? = null
+    private var workingState = MutableStateFlow(true)
 
 
     private fun initSearchPool() {
@@ -80,12 +83,18 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                     bs.getBookSource()?.let {
                         emit(it)
                     }
+                    workingState.first { it }
                 }
             }.onStart {
                 callBack.onSearchStart()
             }.mapParallelSafe(threadCount) {
                 withTimeout(30000L) {
-                    WebBook.searchBookAwait(it, searchKey, searchPage)
+                    WebBook.searchBookAwait(
+                        it, searchKey, searchPage,
+                        filter = { name, author ->
+                            !precision || name.contains(searchKey) ||
+                                    author.contains(searchKey)
+                        })
                 }
             }.onEach { items ->
                 for (book in items) {
@@ -169,6 +178,14 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             coroutineContext.ensureActive()
             searchBooks = equalData
         }
+    }
+
+    fun pause() {
+        workingState.value = false
+    }
+
+    fun resume() {
+        workingState.value = true
     }
 
     fun cancelSearch() {

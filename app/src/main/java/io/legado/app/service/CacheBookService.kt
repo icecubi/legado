@@ -65,7 +65,6 @@ class CacheBookService : BaseService() {
     override fun onCreate() {
         super.onCreate()
         isRun = true
-        CacheBook.clear()
         lifecycleScope.launch {
             while (isActive) {
                 delay(1000)
@@ -140,10 +139,9 @@ class CacheBookService : BaseService() {
             cacheBook.addDownload(start, end2)
             notificationContent = CacheBook.downloadSummary
             upCacheBookNotification()
-            synchronized(this) {
-                if (downloadJob == null) {
-                    download()
-                }
+        }.onFinally {
+            if (downloadJob == null) {
+                download()
             }
         }
     }
@@ -165,7 +163,7 @@ class CacheBookService : BaseService() {
         downloadJob = lifecycleScope.launch(cachePool) {
             while (isActive) {
                 if (!CacheBook.isRun) {
-                    CacheBook.stop(this@CacheBookService)
+                    stopSelf()
                     return@launch
                 }
                 CacheBook.cacheBookMap.forEach {
@@ -178,6 +176,7 @@ class CacheBookService : BaseService() {
                         }
                     }
                 }
+                delay(100)
             }
         }
     }

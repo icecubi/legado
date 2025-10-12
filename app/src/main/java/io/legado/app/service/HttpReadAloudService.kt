@@ -284,12 +284,14 @@ class HttpReadAloudService : BaseReadAloudService(),
                     null
                 } else {
                     kotlin.runCatching {
-                        runBlocking {
+                        runBlocking(lifecycleScope.coroutineContext[Job]!!) {
                             getSpeakStream(httpTts, speakText)
                         }
                     }.onFailure {
                         when (it) {
-                            is InterruptedException -> Unit
+                            is InterruptedException,
+                            is CancellationException -> Unit
+
                             else -> pauseReadAloud()
                         }
                     }.getOrThrow()
@@ -328,7 +330,6 @@ class HttpReadAloudService : BaseReadAloudService(),
                     speakText = speakText,
                     speakSpeed = speechRate,
                     source = httpTts,
-                    headerMapF = httpTts.getHeaderMap(true),
                     readTimeout = 300 * 1000L,
                     coroutineContext = coroutineContext
                 )
@@ -339,17 +340,20 @@ class HttpReadAloudService : BaseReadAloudService(),
                     response = analyzeUrl.evalJS(checkJs, response) as Response
                 }
                 response.headers["Content-Type"]?.let { contentType ->
+                    val contentType = contentType.substringBefore(";")
                     val ct = httpTts.contentType
-                    if (contentType == "application/json") {
-                        throw NoStackTraceException(response.body!!.string())
+                    if (contentType == "application/json" || contentType.startsWith("text/")) {
+                        throw NoStackTraceException(response.body.string())
                     } else if (ct?.isNotBlank() == true) {
                         if (!contentType.matches(ct.toRegex())) {
-                            throw NoStackTraceException("TTS服务器返回错误：" + response.body!!.string())
+                            throw NoStackTraceException(
+                                "TTS服务器返回错误：" + response.body.string()
+                            )
                         }
                     }
                 }
                 coroutineContext.ensureActive()
-                response.body!!.byteStream().let { stream ->
+                response.body.byteStream().let { stream ->
                     downloadErrorNo = 0
                     return stream
                 }
@@ -473,12 +477,12 @@ class HttpReadAloudService : BaseReadAloudService(),
             val sleep = exoPlayer.duration / speakTextLength
             val start = speakTextLength * exoPlayer.currentPosition / exoPlayer.duration
             for (i in start..contentList[nowSpeak].length) {
-                if (readAloudNumber + i > textChapter.getReadLength(pageIndex + 1)) {
+                if (pageIndex + 1 < textChapter.pageSize
+                    && readAloudNumber + i > textChapter.getReadLength(pageIndex + 1)
+                ) {
                     pageIndex++
-                    if (pageIndex < textChapter.pageSize) {
-                        ReadBook.moveToNextPage()
-                        upTtsProgress(readAloudNumber + i.toInt())
-                    }
+                    ReadBook.moveToNextPage()
+                    upTtsProgress(readAloudNumber + i.toInt())
                 }
                 delay(sleep)
             }
@@ -551,6 +555,7 @@ class HttpReadAloudService : BaseReadAloudService(),
     override fun onPlayerError(error: PlaybackException) {
         super.onPlayerError(error)
         AppLog.put("朗读错误\n${contentList[nowSpeak]}", error)
+        deleteCurrentSpeakFile()
         playErrorNo++
         if (playErrorNo >= 5) {
             toastOnUi("朗读连续5次错误, 最后一次错误代码(${error.localizedMessage})")
@@ -559,13 +564,21 @@ class HttpReadAloudService : BaseReadAloudService(),
         } else {
             if (exoPlayer.hasNextMediaItem()) {
                 exoPlayer.seekToNextMediaItem()
-                exoPlayer.playWhenReady = true
                 exoPlayer.prepare()
             } else {
                 exoPlayer.clearMediaItems()
                 updateNextPos()
             }
         }
+    }
+
+    private fun deleteCurrentSpeakFile() {
+        if (AppConfig.streamReadAloudAudio) {
+            return
+        }
+        val mediaItem = exoPlayer.currentMediaItem ?: return
+        val filePath = mediaItem.localConfiguration!!.uri.path!!
+        File(filePath).delete()
     }
 
     override fun aloudServicePendingIntent(actionStr: String): PendingIntent? {

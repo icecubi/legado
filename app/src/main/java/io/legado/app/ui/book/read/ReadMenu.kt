@@ -18,11 +18,12 @@ import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ViewReadMenuBinding
-import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
+import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.source.getSourceType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.accentColor
@@ -125,21 +126,7 @@ class ReadMenu @JvmOverloads constructor(
 
         @SuppressLint("RtlHardcoded")
         override fun onAnimationEnd(animation: Animation) {
-//            val navigationBarHeight =
-//                if (ReadBookConfig.hideNavigationBar) {
-//                    activity?.navigationBarHeight ?: 0
-//                } else {
-//                    0
-//                }
-            binding.run {
-                vwMenuBg.setOnClickListener { runMenuOut() }
-//                root.padding = 0
-//                when (activity?.navigationBarGravity) {
-//                    Gravity.BOTTOM -> root.bottomPadding = navigationBarHeight
-//                    Gravity.LEFT -> root.leftPadding = navigationBarHeight
-//                    Gravity.RIGHT -> root.rightPadding = navigationBarHeight
-//                }
-            }
+            binding.vwMenuBg.setOnClickListener { runMenuOut() }
             callBack.upSystemUiVisibility()
             if (!LocalConfig.readMenuHelpVersionIsLast) {
                 callBack.showHelp()
@@ -346,11 +333,16 @@ class ReadMenu @JvmOverloads constructor(
             if (AppConfig.readUrlInBrowser) {
                 context.openUrl(tvChapterUrl.text.toString().substringBefore(",{"))
             } else {
-                context.startActivity<WebViewActivity> {
-                    val url = tvChapterUrl.text.toString()
-                    putExtra("title", tvChapterName.text)
-                    putExtra("url", url)
-                    IntentData.put(url, ReadBook.bookSource?.getHeaderMap(true))
+                Coroutine.async {
+                    context.startActivity<WebViewActivity> {
+                        val url = tvChapterUrl.text.toString()
+                        val bookSource = ReadBook.bookSource
+                        putExtra("title", tvChapterName.text)
+                        putExtra("url", url)
+                        putExtra("sourceOrigin", bookSource?.bookSourceUrl)
+                        putExtra("sourceName", bookSource?.bookSourceName)
+                        putExtra("sourceType", bookSource?.getSourceType())
+                    }
                 }
             }
         }
@@ -409,7 +401,12 @@ class ReadMenu @JvmOverloads constructor(
         //阅读进度
         seekReadPage.setOnSeekBarChangeListener(object : SeekBarChangeListener {
 
+            override fun onStartTrackingTouch(seekBar: SeekBar) {
+                binding.vwMenuBg.setOnClickListener(null)
+            }
+
             override fun onStopTrackingTouch(seekBar: SeekBar) {
+                binding.vwMenuBg.setOnClickListener { runMenuOut() }
                 when (AppConfig.progressBarBehavior) {
                     "page" -> ReadBook.skipToPage(seekBar.progress)
                     "chapter" -> {

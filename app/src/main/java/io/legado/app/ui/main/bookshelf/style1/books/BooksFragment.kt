@@ -22,19 +22,17 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBooksBinding
-import io.legado.app.help.book.isAudio
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
-import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.info.BookInfoActivity
-import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.main.MainViewModel
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -67,7 +65,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private val bookshelfLayout by lazy { AppConfig.bookshelfLayout }
     private val booksAdapter: BaseBooksAdapter<*> by lazy {
         if (bookshelfLayout == 0) {
-            BooksAdapterList(requireContext(), this, viewLifecycleOwner.lifecycle)
+            BooksAdapterList(requireContext(), this, this, viewLifecycleOwner.lifecycle)
         } else {
             BooksAdapterGrid(requireContext(), this)
         }
@@ -202,7 +200,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun startLastUpdateTimeJob() {
         upLastUpdateTimeJob?.cancel()
-        if (!AppConfig.showLastUpdateTime) {
+        if (!AppConfig.showLastUpdateTime || bookshelfLayout != 0) {
             return
         }
         upLastUpdateTimeJob = lifecycleScope.launch {
@@ -241,16 +239,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun open(book: Book) {
-        when {
-            book.isAudio ->
-                startActivity<AudioPlayActivity> {
-                    putExtra("bookUrl", book.bookUrl)
-                }
-
-            else -> startActivity<ReadBookActivity> {
-                putExtra("bookUrl", book.bookUrl)
-            }
-        }
+        startActivityForBook(book)
     }
 
     override fun openBookInfo(book: Book) {

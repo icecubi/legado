@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
@@ -132,6 +133,9 @@ interface BookDao {
     @Query("select exists(select 1 from books where bookUrl = :bookUrl)")
     fun has(bookUrl: String): Boolean
 
+    @Query("select exists(select 1 from books where name = :name and author = :author)")
+    fun has(name: String, author: String): Boolean
+
     @Query(
         """select exists(select 1 from books where type & ${BookType.local} > 0 
         and (originName = :fileName or (origin != '${BookType.localTag}' and origin like '%' || :fileName)))"""
@@ -146,6 +150,12 @@ interface BookDao {
 
     @Delete
     fun delete(vararg book: Book)
+
+    @Transaction
+    fun replace(oldBook: Book, newBook: Book) {
+        delete(oldBook)
+        insert(newBook)
+    }
 
     @Query("update books set durChapterPos = :pos where bookUrl = :bookUrl")
     fun upProgress(bookUrl: String, pos: Int)

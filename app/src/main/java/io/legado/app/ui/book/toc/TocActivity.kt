@@ -17,7 +17,6 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityChapterListBinding
 import io.legado.app.help.book.isLocalTxt
-import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
@@ -196,13 +195,11 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         waitDialog.show()
         viewModel.upBookTocRule(book) {
             waitDialog.dismiss()
-            ReadBook.book?.let { readBook ->
-                if (readBook == book) {
-                    ReadBook.book = book
-                    ReadBook.chapterSize = book.totalChapterNum
-                    ReadBook.simulatedChapterSize = book.simulatedTotalChapterNum()
+            if (ReadBook.book == book) {
+                if (it == null) {
                     ReadBook.upMsg(null)
-                    ReadBook.loadContent(resetPageOffset = true)
+                } else {
+                    ReadBook.upMsg("LoadTocError:${it.localizedMessage}")
                 }
             }
         }

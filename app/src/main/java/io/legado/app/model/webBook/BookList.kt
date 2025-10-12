@@ -5,16 +5,23 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.BookListRule
+import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.getBookType
+import io.legado.app.help.source.exploreKindsJson
+import io.legado.app.help.source.getBookType
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setRuleData
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.RuleData
+import io.legado.app.utils.GSON
+import io.legado.app.utils.GSONStrict
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.StringUtils.wordCountFormat
+import io.legado.app.utils.fromJsonArray
 import kotlinx.coroutines.ensureActive
 import splitties.init.appCtx
 import kotlin.coroutines.coroutineContext
@@ -32,7 +39,9 @@ object BookList {
         baseUrl: String,
         body: String?,
         isSearch: Boolean = true,
-        isRedirect: Boolean = false
+        isRedirect: Boolean = false,
+        filter: ((name: String, author: String) -> Boolean)? = null,
+        shouldBreak: ((size: Int) -> Boolean)? = null
     ): ArrayList<SearchBook> {
         body ?: throw NoStackTraceException(
             appCtx.getString(
@@ -47,6 +56,9 @@ object BookList {
         analyzeRule.setContent(body).setBaseUrl(baseUrl)
         analyzeRule.setRedirectUrl(baseUrl)
         analyzeRule.setCoroutineContext(coroutineContext)
+        if (!isSearch) {
+            checkExploreJson(bookSource)
+        }
         if (isSearch) bookSource.bookUrlPattern?.let {
             coroutineContext.ensureActive()
             if (baseUrl.matches(it.toRegex())) {
@@ -58,7 +70,8 @@ object BookList {
                     body,
                     baseUrl,
                     ruleData.getVariable(),
-                    isRedirect
+                    isRedirect,
+                    filter
                 )?.let { searchBook ->
                     searchBook.infoHtml = body
                     bookList.add(searchBook)
@@ -88,7 +101,7 @@ object BookList {
             Debug.log(bookSource.bookSourceUrl, "└列表为空,按详情页解析")
             getInfoItem(
                 bookSource, analyzeRule, analyzeUrl, body, baseUrl, ruleData.getVariable(),
-                isRedirect
+                isRedirect, filter
             )?.let { searchBook ->
                 searchBook.infoHtml = body
                 bookList.add(searchBook)
@@ -107,6 +120,7 @@ object BookList {
                 getSearchItem(
                     bookSource, analyzeRule, item, baseUrl, ruleData.getVariable(),
                     index == 0,
+                    filter,
                     ruleName = ruleName,
                     ruleBookUrl = ruleBookUrl,
                     ruleAuthor = ruleAuthor,
@@ -120,6 +134,9 @@ object BookList {
                         searchBook.infoHtml = body
                     }
                     bookList.add(searchBook)
+                }
+                if (shouldBreak?.invoke(bookList.size) == true) {
+                    break
                 }
             }
             val lh = LinkedHashSet(bookList)
@@ -141,7 +158,8 @@ object BookList {
         body: String,
         baseUrl: String,
         variable: String?,
-        isRedirect: Boolean
+        isRedirect: Boolean,
+        filter: ((name: String, author: String) -> Boolean)?
     ): SearchBook? {
         val book = Book(variable = variable)
         book.bookUrl = if (isRedirect) {
@@ -153,7 +171,7 @@ object BookList {
         book.originName = bookSource.bookSourceName
         book.originOrder = bookSource.customOrder
         book.type = bookSource.getBookType()
-        analyzeRule.ruleData = book
+        analyzeRule.setRuleData(book)
         BookInfo.analyzeBookInfo(
             book,
             body,
@@ -163,6 +181,9 @@ object BookList {
             baseUrl,
             false
         )
+        if (filter?.invoke(book.name, book.author) == false) {
+            return null
+        }
         if (book.name.isNotBlank()) {
             return book.toSearchBook()
         }
@@ -177,6 +198,7 @@ object BookList {
         baseUrl: String,
         variable: String?,
         log: Boolean,
+        filter: ((name: String, author: String) -> Boolean)?,
         ruleName: List<AnalyzeRule.SourceRule>,
         ruleBookUrl: List<AnalyzeRule.SourceRule>,
         ruleAuthor: List<AnalyzeRule.SourceRule>,
@@ -191,7 +213,7 @@ object BookList {
         searchBook.origin = bookSource.bookSourceUrl
         searchBook.originName = bookSource.bookSourceName
         searchBook.originOrder = bookSource.customOrder
-        analyzeRule.ruleData = searchBook
+        analyzeRule.setRuleData(searchBook)
         analyzeRule.setContent(item)
         coroutineContext.ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取书名", log)
@@ -202,12 +224,16 @@ object BookList {
             Debug.log(bookSource.bookSourceUrl, "┌获取作者", log)
             searchBook.author = BookHelp.formatBookAuthor(analyzeRule.getString(ruleAuthor))
             Debug.log(bookSource.bookSourceUrl, "└${searchBook.author}", log)
+            if (filter?.invoke(searchBook.name, searchBook.author) == false) {
+                return null
+            }
             coroutineContext.ensureActive()
             Debug.log(bookSource.bookSourceUrl, "┌获取分类", log)
             try {
                 searchBook.kind = analyzeRule.getStringList(ruleKind)?.joinToString(",")
                 Debug.log(bookSource.bookSourceUrl, "└${searchBook.kind ?: ""}", log)
             } catch (e: Exception) {
+                coroutineContext.ensureActive()
                 Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
             }
             coroutineContext.ensureActive()
@@ -215,7 +241,8 @@ object BookList {
             try {
                 searchBook.wordCount = wordCountFormat(analyzeRule.getString(ruleWordCount))
                 Debug.log(bookSource.bookSourceUrl, "└${searchBook.wordCount}", log)
-            } catch (e: java.lang.Exception) {
+            } catch (e: Exception) {
+                coroutineContext.ensureActive()
                 Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
             }
             coroutineContext.ensureActive()
@@ -223,7 +250,8 @@ object BookList {
             try {
                 searchBook.latestChapterTitle = analyzeRule.getString(ruleLastChapter)
                 Debug.log(bookSource.bookSourceUrl, "└${searchBook.latestChapterTitle}", log)
-            } catch (e: java.lang.Exception) {
+            } catch (e: Exception) {
+                coroutineContext.ensureActive()
                 Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
             }
             coroutineContext.ensureActive()
@@ -231,7 +259,8 @@ object BookList {
             try {
                 searchBook.intro = HtmlFormatter.format(analyzeRule.getString(ruleIntro))
                 Debug.log(bookSource.bookSourceUrl, "└${searchBook.intro}", log)
-            } catch (e: java.lang.Exception) {
+            } catch (e: Exception) {
+                coroutineContext.ensureActive()
                 Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
             }
             coroutineContext.ensureActive()
@@ -243,7 +272,8 @@ object BookList {
                     }
                 }
                 Debug.log(bookSource.bookSourceUrl, "└${searchBook.coverUrl ?: ""}", log)
-            } catch (e: java.lang.Exception) {
+            } catch (e: Exception) {
+                coroutineContext.ensureActive()
                 Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
             }
             coroutineContext.ensureActive()
@@ -256,6 +286,23 @@ object BookList {
             return searchBook
         }
         return null
+    }
+
+    private fun checkExploreJson(bookSource: BookSource) {
+        if (Debug.callback == null) {
+            return
+        }
+        val json = bookSource.exploreKindsJson()
+        if (json.isEmpty()) {
+            return
+        }
+        val kinds = GSONStrict.fromJsonArray<ExploreKind>(json).getOrNull()
+        if (kinds != null) {
+            return
+        }
+        GSON.fromJsonArray<ExploreKind>(json).getOrNull()?.let {
+            Debug.log("≡发现地址规则 JSON 格式不规范，请改为规范格式")
+        }
     }
 
 }

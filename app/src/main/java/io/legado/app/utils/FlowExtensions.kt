@@ -2,7 +2,6 @@ package io.legado.app.utils
 
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.room.invalidationTrackerFlow
 import io.legado.app.data.appDb
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -14,7 +13,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -64,7 +63,7 @@ inline fun <T, R> Flow<T>.mapParallelSafe(
     flow {
         try {
             emit(transform(value))
-        } catch (e: Throwable) {
+        } catch (_: Throwable) {
             coroutineContext.ensureActive()
         }
     }
@@ -199,7 +198,9 @@ fun <T> Flow<T>.flowWithLifecycleFirst(
     minActiveState: Lifecycle.State = Lifecycle.State.STARTED
 ): Flow<T> = callbackFlow {
     if (!lifecycle.currentState.isAtLeast(minActiveState)) {
-        send(first())
+        firstOrNull()?.let {
+            send(it)
+        }
     }
     lifecycle.repeatOnLifecycle(minActiveState) {
         this@flowWithLifecycleFirst.collect {
@@ -215,7 +216,8 @@ fun <T> Flow<T>.flowWithLifecycleAndDatabaseChange(
     table: String
 ): Flow<T> = callbackFlow {
     var update = 0
-    val channel = appDb.invalidationTrackerFlow(table)
+    val channel = appDb.invalidationTracker
+        .createFlow(table)
         .conflate()
         .onEach { update++ }
         .produceIn(this)
@@ -238,12 +240,15 @@ fun <T> Flow<T>.flowWithLifecycleAndDatabaseChangeFirst(
 ): Flow<T> = callbackFlow {
     var update = 0
     val isActive = lifecycle.currentState.isAtLeast(minActiveState)
-    val channel = appDb.invalidationTrackerFlow(table, emitInitialState = isActive)
+    val channel = appDb.invalidationTracker
+        .createFlow(table, emitInitialState = isActive)
         .conflate()
         .onEach { update++ }
         .produceIn(this)
     if (!isActive) {
-        send(first())
+        firstOrNull()?.let {
+            send(it)
+        }
     }
     lifecycle.repeatOnLifecycle(minActiveState) {
         if (update == 0) {
